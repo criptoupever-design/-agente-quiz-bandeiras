@@ -4,7 +4,8 @@ name: Compilar APK do Quiz
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -29,18 +30,54 @@ jobs:
           gradle-version: '8.9'
 
       - name: Extrair projeto
+        shell: bash
         run: |
-          ZIP=$(find . -maxdepth 2 -type f -name '*.zip' | head -n 1)
-          test -n "$ZIP"
-          unzip -o "$ZIP" -d projeto
-          find projeto \( -name settings.gradle -o -name settings.gradle.kts \)
+          set -e
+          mkdir -p projeto
 
-      - name: Compilar APK
+          ZIP=$(find . -maxdepth 2 -type f -name '*.zip' | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERRO: Nenhum arquivo ZIP encontrado na raiz do repositório."
+            exit 1
+          fi
+
+          echo "ZIP encontrado: $ZIP"
+          unzip -o "$ZIP" -d projeto
+
+          echo "Arquivos Gradle encontrados:"
+          find projeto -type f \( \
+            -name settings.gradle \
+            -o -name settings.gradle.kts \
+          \)
+
+      - name: Localizar e compilar APK
+        shell: bash
         run: |
-          SETTINGS=$(find projeto -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)
-          test -n "$SETTINGS"
+          set -e
+
+          SETTINGS=$(find projeto -type f \( \
+            -name settings.gradle \
+            -o -name settings.gradle.kts \
+          \) | head -n 1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERRO: settings.gradle não encontrado."
+            echo "Arquivos extraídos:"
+            find projeto -maxdepth 6 -type f | head -n 150
+            exit 1
+          fi
+
           DIR=$(dirname "$SETTINGS")
+          echo "Pasta do projeto Android: $DIR"
           cd "$DIR"
+
+          if [ ! -f app/build.gradle ] && [ ! -f app/build.gradle.kts ]; then
+            echo "ERRO: arquivo Gradle do módulo app não encontrado."
+            find . -maxdepth 4 -type f
+            exit 1
+          fi
+
           gradle assembleDebug
 
       - name: Disponibilizar APK
